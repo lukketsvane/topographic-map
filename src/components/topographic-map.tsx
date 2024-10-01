@@ -305,13 +305,13 @@ const EditableValue: React.FC<EditableValueProps> = ({ value, onChange, min, max
   )
 }
 
-interface EditableColorInputProps {
+interface EditableColorInput {
   label: string;
   value: string;
   onChange: (value: string) => void;
 }
 
-const EditableColorInput: React.FC<EditableColorInputProps> = ({ label, value, onChange }) => {
+const EditableColorInput: React.FC<EditableColorInput> = ({ label, value, onChange }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(value)
 
@@ -366,16 +366,15 @@ export default function TopographicMapGenerator() {
   const [terraceStep, setTerraceStep] = useState(0.04)
   const [terraceSmoothing, setTerraceSmoothing] = useState(0.12)
   const [lineColorMode, setLineColorMode] = useState(true)
-  const [lineColor, setLineColor] = useState("#ffffff")
+  const [lineColor, setLineColor] = useState("#000000")
   const [lineThickness, setLineThickness] = useState(0.07)
   const [lineHeight, setLineHeight] = useState(25.56)
   const [lineSpacing, setLineSpacing] = useState(0.56)
-  const [backgroundColor, setBackgroundColor] = useState("#000000")
-  const [highElevationColor, setHighElevationColor] = useState("#878787")
-  const [lowElevationColor, setLowElevationColor] = useState("#000000")
+  const [backgroundColor, setBackgroundColor] = useState("#fffff")
+  const [highElevationColor, setHighElevationColor] = useState("#c7c7c7")
+  const [lowElevationColor, setLowElevationColor] = useState("#fffff")
   const [elevationColorStrength, setElevationColorStrength] = useState(1.50)
   const [elevationColorDiffusion, setElevationColorDiffusion] = useState(0.50)
-
   const randomize = () => {
     setMaxElevation(Math.random() * 3 + 1)
     setWarping(Math.random() * 1.5)
@@ -395,12 +394,12 @@ export default function TopographicMapGenerator() {
   useEffect(() => {
     if (theme === "dark") {
       setBackgroundColor("#000000")
-      setHighElevationColor("#878787")
+      setHighElevationColor("#c7c7c7")
       setLowElevationColor("#000000")
       setLineColor("#ffffff")
     } else {
       setBackgroundColor("#ffffff")
-      setHighElevationColor("#000000")
+      setHighElevationColor("#c7c7c7")
       setLowElevationColor("#ffffff")
       setLineColor("#000000")
     }
