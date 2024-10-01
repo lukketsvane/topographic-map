@@ -305,13 +305,13 @@ const EditableValue: React.FC<EditableValueProps> = ({ value, onChange, min, max
   )
 }
 
-interface EditableColorInput {
+interface EditableColorInputProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
 }
 
-const EditableColorInput: React.FC<EditableColorInput> = ({ label, value, onChange }) => {
+const EditableColorInput: React.FC<EditableColorInputProps> = ({ label, value, onChange }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(value)
 
@@ -357,24 +357,24 @@ const EditableColorInput: React.FC<EditableColorInput> = ({ label, value, onChan
 export default function TopographicMapGenerator() {
   const { theme, setTheme } = useTheme()
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [mapSize, setMapSize] = useState(10)
+  const [mapSize, setMapSize] = useState(6.20)
   const [speed, setSpeed] = useState(0.50)
-  const [maxElevation, setMaxElevation] = useState(2)
-  const [warping, setWarping] = useState(0.5)
-  const [ridgeFrequency, setRidgeFrequency] = useState(5)
-  const [ridgeHeight, setRidgeHeight] = useState(0.1)
-  const [terraceStep, setTerraceStep] = useState(0.1)
-  const [terraceSmoothing, setTerraceSmoothing] = useState(0.5)
+  const [maxElevation, setMaxElevation] = useState(1.95)
+  const [warping, setWarping] = useState(0.20)
+  const [ridgeFrequency, setRidgeFrequency] = useState(5.89)
+  const [ridgeHeight, setRidgeHeight] = useState(0.17)
+  const [terraceStep, setTerraceStep] = useState(0.04)
+  const [terraceSmoothing, setTerraceSmoothing] = useState(0.12)
   const [lineColorMode, setLineColorMode] = useState(true)
   const [lineColor, setLineColor] = useState("#ffffff")
-  const [lineThickness, setLineThickness] = useState(0.05)
-  const [lineHeight, setLineHeight] = useState(20)
-  const [lineSpacing, setLineSpacing] = useState(1.0)
+  const [lineThickness, setLineThickness] = useState(0.07)
+  const [lineHeight, setLineHeight] = useState(25.56)
+  const [lineSpacing, setLineSpacing] = useState(0.56)
   const [backgroundColor, setBackgroundColor] = useState("#000000")
-  const [highElevationColor, setHighElevationColor] = useState("#ffffff")
+  const [highElevationColor, setHighElevationColor] = useState("#878787")
   const [lowElevationColor, setLowElevationColor] = useState("#000000")
-  const [elevationColorStrength, setElevationColorStrength] = useState(1.5)
-  const [elevationColorDiffusion, setElevationColorDiffusion] = useState(0.5)
+  const [elevationColorStrength, setElevationColorStrength] = useState(1.50)
+  const [elevationColorDiffusion, setElevationColorDiffusion] = useState(0.50)
 
   const randomize = () => {
     setMaxElevation(Math.random() * 3 + 1)
@@ -395,7 +395,7 @@ export default function TopographicMapGenerator() {
   useEffect(() => {
     if (theme === "dark") {
       setBackgroundColor("#000000")
-      setHighElevationColor("#ffffff")
+      setHighElevationColor("#878787")
       setLowElevationColor("#000000")
       setLineColor("#ffffff")
     } else {
@@ -454,10 +454,10 @@ export default function TopographicMapGenerator() {
               <AccordionTrigger>Topography</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-4">
-                  <EditableValue label="Map size" value={mapSize} onChange={setMapSize} min={1} max={20} step={0.1} />
+                  <EditableValue label="Map size" value={mapSize} onChange={setMapSize} min={1} max={20} step={0.01} />
                   <EditableValue label="Max. elevation" value={maxElevation} onChange={setMaxElevation} min={0} max={5} step={0.01} />
                   <EditableValue label="Warping" value={warping} onChange={setWarping} min={0} max={3} step={0.01} />
-                  <EditableValue label="Ridge frequency" value={ridgeFrequency} onChange={setRidgeFrequency} min={0} max={20} step={0.1} />
+                  <EditableValue label="Ridge frequency" value={ridgeFrequency} onChange={setRidgeFrequency} min={0} max={20} step={0.01} />
                   <EditableValue label="Ridge height" value={ridgeHeight} onChange={setRidgeHeight} min={0} max={0.5} step={0.01} />
                   <EditableValue label="Terrace step" value={terraceStep} onChange={setTerraceStep} min={0} max={0.5} step={0.01} />
                   <EditableValue label="Terrace smoothing" value={terraceSmoothing} onChange={setTerraceSmoothing} min={0} max={1} step={0.01} />
@@ -482,9 +482,9 @@ export default function TopographicMapGenerator() {
                     />
                   </div>
                   <EditableColorInput label="Line color" value={lineColor} onChange={setLineColor} />
-                  <EditableValue label="Line thickness" value={lineThickness} onChange={setLineThickness} min={0} max={0.2} step={0.001} />
-                  <EditableValue label="Line height" value={lineHeight} onChange={setLineHeight} min={1} max={50} step={0.1} />
-                  <EditableValue label="Line spacing" value={lineSpacing} onChange={setLineSpacing} min={0.1} max={5} step={0.1} />
+                  <EditableValue label="Line thickness" value={lineThickness} onChange={setLineThickness} min={0} max={0.2} step={0.01} />
+                  <EditableValue label="Line height" value={lineHeight} onChange={setLineHeight} min={1} max={50} step={0.01} />
+                  <EditableValue label="Line spacing" value={lineSpacing} onChange={setLineSpacing} min={0.1} max={5} step={0.01} />
                   <EditableColorInput label="Background color" value={backgroundColor} onChange={setBackgroundColor} />
                   <EditableColorInput label="High elevation color" value={highElevationColor} onChange={setHighElevationColor} />
                   <EditableColorInput label="Low elevation color" value={lowElevationColor} onChange={setLowElevationColor} />
