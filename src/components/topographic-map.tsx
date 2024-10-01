@@ -22,7 +22,6 @@ const vertexShader = `
   uniform float uRidgeHeight;
   uniform float uTerraceStep;
   uniform float uTerraceSmoothing;
-  uniform float uFade;
   varying float vElevation;
   varying vec2 vUv;
 
@@ -115,7 +114,7 @@ const vertexShader = `
     
     elevation = terrace(elevation, uTerraceStep, uTerraceSmoothing);
     
-    modelPosition.y += elevation * uFade;
+    modelPosition.y += elevation;
     
     vElevation = elevation;
     
@@ -132,7 +131,7 @@ const fragmentShader = `
   uniform vec3 uLineColor;
   uniform float uLineThickness;
   uniform float uLineHeight;
-  uniform float uFade;
+  uniform float uLineSpacing;
   
   varying float vElevation;
   varying vec2 vUv;
@@ -142,12 +141,13 @@ const fragmentShader = `
     vec3 color = mix(uLowColor, uHighColor, mixStrength);
 
     if (uLineColorMode) {
-      float lineIntensity = mod(vElevation * uLineHeight, uLineThickness) / uLineThickness;
-      lineIntensity = step(0.5, lineIntensity);
-      color = mix(uLineColor, color, lineIntensity);
+      float lineIntensity = mod(vElevation * uLineHeight, uLineSpacing);
+      float fadeFactor = smoothstep(0.0, uLineThickness, lineIntensity) * 
+                         (1.0 - smoothstep(uLineThickness, uLineThickness * 2.0, lineIntensity));
+      color = mix(color, uLineColor, fadeFactor);
     }
 
-    gl_FragColor = vec4(color, uFade);
+    gl_FragColor = vec4(color, 1.0);
   }
 `
 
@@ -168,7 +168,7 @@ interface TerrainProps {
   lineColor: string;
   lineThickness: number;
   lineHeight: number;
-  fade: number;
+  lineSpacing: number;
 }
 
 function Terrain({ 
@@ -188,7 +188,7 @@ function Terrain({
   lineColor,
   lineThickness,
   lineHeight,
-  fade,
+  lineSpacing,
 }: TerrainProps) {
   const mesh = useRef<THREE.Mesh>(null)
   const uniforms = useRef({
@@ -208,7 +208,7 @@ function Terrain({
     uLineColor: { value: new THREE.Color(lineColor) },
     uLineThickness: { value: lineThickness },
     uLineHeight: { value: lineHeight },
-    uFade: { value: fade },
+    uLineSpacing: { value: lineSpacing },
   })
 
   useFrame((state) => {
@@ -231,7 +231,7 @@ function Terrain({
       material.uniforms.uLineColor.value = new THREE.Color(lineColor)
       material.uniforms.uLineThickness.value = lineThickness
       material.uniforms.uLineHeight.value = lineHeight
-      material.uniforms.uFade.value = fade
+      material.uniforms.uLineSpacing.value = lineSpacing
     }
   })
 
@@ -242,7 +242,6 @@ function Terrain({
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
         uniforms={uniforms.current}
-        transparent={true}
       />
     </mesh>
   )
@@ -306,13 +305,13 @@ const EditableValue: React.FC<EditableValueProps> = ({ value, onChange, min, max
   )
 }
 
-interface EditableColorInputProps {
+interface EditableColorInput {
   label: string;
   value: string;
   onChange: (value: string) => void;
 }
 
-const EditableColorInput: React.FC<EditableColorInputProps> = ({ label, value, onChange }) => {
+const EditableColorInput: React.FC<EditableColorInput> = ({ label, value, onChange }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(value)
 
@@ -359,7 +358,7 @@ export default function TopographicMapGenerator() {
   const { theme, setTheme } = useTheme()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mapSize, setMapSize] = useState(10)
-  const [speed, setSpeed] = useState(0.1)
+  const [speed, setSpeed] = useState(0.50)
   const [maxElevation, setMaxElevation] = useState(2)
   const [warping, setWarping] = useState(0.5)
   const [ridgeFrequency, setRidgeFrequency] = useState(5)
@@ -370,13 +369,12 @@ export default function TopographicMapGenerator() {
   const [lineColor, setLineColor] = useState("#ffffff")
   const [lineThickness, setLineThickness] = useState(0.05)
   const [lineHeight, setLineHeight] = useState(20)
+  const [lineSpacing, setLineSpacing] = useState(1.0)
   const [backgroundColor, setBackgroundColor] = useState("#000000")
   const [highElevationColor, setHighElevationColor] = useState("#ffffff")
   const [lowElevationColor, setLowElevationColor] = useState("#000000")
   const [elevationColorStrength, setElevationColorStrength] = useState(1.5)
   const [elevationColorDiffusion, setElevationColorDiffusion] = useState(0.5)
-  const [fade, setFade] = useState(1)
-  const [accordionValue, setAccordionValue] = useState<string[]>(["topography", "color"])
 
   const randomize = () => {
     setMaxElevation(Math.random() * 3 + 1)
@@ -387,6 +385,7 @@ export default function TopographicMapGenerator() {
     setTerraceSmoothing(Math.random())
     setLineThickness(Math.random() * 0.1)
     setLineHeight(Math.random() * 30 + 10)
+    setLineSpacing(Math.random() * 1.5 + 0.5)
   }
 
   const toggleTheme = () => {
@@ -406,27 +405,6 @@ export default function TopographicMapGenerator() {
       setLineColor("#000000")
     }
   }, [theme])
-
-  useEffect(() => {
-    const targetFade = accordionValue.length > 0 ? 1 : 0
-    const fadeDuration = 500 // ms
-    const startTime = Date.now()
-    const startFade = fade
-
-    const animateFade = () => {
-      const elapsedTime = Date.now() - startTime
-      const progress = Math.min(elapsedTime / fadeDuration, 1)
-      const newFade = startFade + (targetFade - startFade) * progress
-
-      setFade(newFade)
-
-      if (progress < 1) {
-        requestAnimationFrame(animateFade)
-      }
-    }
-
-    animateFade()
-  }, [accordionValue])
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -450,7 +428,7 @@ export default function TopographicMapGenerator() {
             lineColor={lineColor}
             lineThickness={lineThickness}
             lineHeight={lineHeight}
-            fade={fade}
+            lineSpacing={lineSpacing}
           />
           <OrbitControls enableZoom={true} enablePan={false} enableRotate={true} />
         </Canvas>
@@ -471,16 +449,12 @@ export default function TopographicMapGenerator() {
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
           </div>
-          <Accordion 
-            type="multiple" 
-            value={accordionValue} 
-            onValueChange={setAccordionValue} 
-            className="w-full"
-          >
+          <Accordion type="multiple" defaultValue={["topography", "color"]} className="w-full">
             <AccordionItem value="topography">
               <AccordionTrigger>Topography</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-4">
+                  <EditableValue label="Map size" value={mapSize} onChange={setMapSize} min={1} max={20} step={0.1} />
                   <EditableValue label="Max. elevation" value={maxElevation} onChange={setMaxElevation} min={0} max={5} step={0.01} />
                   <EditableValue label="Warping" value={warping} onChange={setWarping} min={0} max={3} step={0.01} />
                   <EditableValue label="Ridge frequency" value={ridgeFrequency} onChange={setRidgeFrequency} min={0} max={20} step={0.1} />
@@ -510,6 +484,7 @@ export default function TopographicMapGenerator() {
                   <EditableColorInput label="Line color" value={lineColor} onChange={setLineColor} />
                   <EditableValue label="Line thickness" value={lineThickness} onChange={setLineThickness} min={0} max={0.2} step={0.001} />
                   <EditableValue label="Line height" value={lineHeight} onChange={setLineHeight} min={1} max={50} step={0.1} />
+                  <EditableValue label="Line spacing" value={lineSpacing} onChange={setLineSpacing} min={0.1} max={5} step={0.1} />
                   <EditableColorInput label="Background color" value={backgroundColor} onChange={setBackgroundColor} />
                   <EditableColorInput label="High elevation color" value={highElevationColor} onChange={setHighElevationColor} />
                   <EditableColorInput label="Low elevation color" value={lowElevationColor} onChange={setLowElevationColor} />
