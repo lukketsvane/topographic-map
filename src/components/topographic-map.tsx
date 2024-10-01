@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import React, { useRef, useState, useEffect } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { Slider } from "@/components/ui/slider"
@@ -9,14 +9,23 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Moon, Sun, Shuffle } from "lucide-react"
+import { useTheme } from "next-themes"
 
 const vertexShader = `
   uniform float uTime;
   uniform float uElevation;
   uniform float uSpeed;
   uniform float uWarping;
+  uniform float uRidgeFrequency;
+  uniform float uRidgeHeight;
+  uniform bool uTransformTo2D;
   varying float vElevation;
+  varying vec2 vUv;
 
+  //	Classic Perlin 3D Noise 
+  //	by Stefan Gustavson
   vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
   vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
   vec3 fade(vec3 t) {return t*t*t*(t*(t*6.0-15.0)+10.0);}
@@ -90,10 +99,18 @@ const vertexShader = `
   }
 
   void main() {
+    vUv = uv;
     vec4 modelPosition = modelMatrix * vec4(position, 1.0);
     
-    float elevation = cnoise(vec3(modelPosition.x * uWarping, modelPosition.z * uWarping - uTime * uSpeed, 0.0)) * uElevation;
-    modelPosition.y += elevation;
+    float baseElevation = cnoise(vec3(modelPosition.x * uWarping, modelPosition.z * uWarping - uTime * uSpeed, 0.0)) * uElevation;
+    float ridges = sin(modelPosition.x * uRidgeFrequency + modelPosition.z * uRidgeFrequency) * uRidgeHeight;
+    float elevation = baseElevation + ridges;
+    
+    if (uTransformTo2D) {
+      modelPosition.y = 0.0;
+    } else {
+      modelPosition.y += elevation;
+    }
     
     vElevation = elevation;
     
@@ -106,12 +123,24 @@ const fragmentShader = `
   uniform vec3 uHighColor;
   uniform float uColorStrength;
   uniform float uColorDiffusion;
+  uniform bool uLineColorMode;
+  uniform vec3 uLineColor;
+  uniform float uLineThickness;
+  uniform float uLineHeight;
   
   varying float vElevation;
+  varying vec2 vUv;
 
   void main() {
     float mixStrength = (vElevation + uColorDiffusion) * uColorStrength;
     vec3 color = mix(uLowColor, uHighColor, mixStrength);
+
+    if (uLineColorMode) {
+      float lineIntensity = mod(vElevation * uLineHeight, uLineThickness) / uLineThickness;
+      lineIntensity = step(0.5, lineIntensity);
+      color = mix(uLineColor, color, lineIntensity);
+    }
+
     gl_FragColor = vec4(color, 1.0);
   }
 `
@@ -122,10 +151,17 @@ function Terrain({
   generalTopography, 
   maxElevation, 
   warping,
+  ridgeFrequency,
+  ridgeHeight,
   highColor,
   lowColor,
   colorStrength,
-  colorDiffusion
+  colorDiffusion,
+  lineColorMode,
+  lineColor,
+  lineThickness,
+  lineHeight,
+  transformTo2D
 }) {
   const mesh = useRef()
   const uniforms = useRef({
@@ -133,10 +169,17 @@ function Terrain({
     uSpeed: { value: speed },
     uElevation: { value: maxElevation },
     uWarping: { value: warping },
+    uRidgeFrequency: { value: ridgeFrequency },
+    uRidgeHeight: { value: ridgeHeight },
     uLowColor: { value: new THREE.Color(lowColor) },
     uHighColor: { value: new THREE.Color(highColor) },
     uColorStrength: { value: colorStrength },
     uColorDiffusion: { value: colorDiffusion },
+    uLineColorMode: { value: lineColorMode },
+    uLineColor: { value: new THREE.Color(lineColor) },
+    uLineThickness: { value: lineThickness },
+    uLineHeight: { value: lineHeight },
+    uTransformTo2D: { value: transformTo2D }
   })
 
   useFrame((state) => {
@@ -145,10 +188,17 @@ function Terrain({
     mesh.current.material.uniforms.uSpeed.value = speed
     mesh.current.material.uniforms.uElevation.value = maxElevation
     mesh.current.material.uniforms.uWarping.value = warping
+    mesh.current.material.uniforms.uRidgeFrequency.value = ridgeFrequency
+    mesh.current.material.uniforms.uRidgeHeight.value = ridgeHeight
     mesh.current.material.uniforms.uLowColor.value = new THREE.Color(lowColor)
     mesh.current.material.uniforms.uHighColor.value = new THREE.Color(highColor)
     mesh.current.material.uniforms.uColorStrength.value = colorStrength
     mesh.current.material.uniforms.uColorDiffusion.value = colorDiffusion
+    mesh.current.material.uniforms.uLineColorMode.value = lineColorMode
+    mesh.current.material.uniforms.uLineColor.value = new THREE.Color(lineColor)
+    mesh.current.material.uniforms.uLineThickness.value = lineThickness
+    mesh.current.material.uniforms.uLineHeight.value = lineHeight
+    mesh.current.material.uniforms.uTransformTo2D.value = transformTo2D
   })
 
   return (
@@ -163,47 +213,82 @@ function Terrain({
   )
 }
 
-const CustomSlider = ({ value, onChange, min, max, step }) => (
-  <div className="relative w-full h-1 bg-secondary rounded-full">
-    <div 
-      className="absolute top-0 left-0 h-full bg-primary rounded-l-full" 
-      style={{ width: `${((value - min) / (max - min)) * 100}%` }} 
-    />
-    <Slider 
-      value={[value]} 
-      onValueChange={(newValue) => onChange(newValue[0])} 
-      min={min} 
-      max={max} 
-      step={step} 
-      className="absolute inset-0" 
+const CustomSlider = ({ value, onChange, min, max, step, label }) => (
+  <div className="space-y-2">
+    <div className="flex justify-between">
+      <Label htmlFor={label} className="text-xs">{label}</Label>
+      <span className="text-xs text-muted-foreground">{value.toFixed(2)}</span>
+    </div>
+    <Slider
+      id={label}
+      min={min}
+      max={max}
+      step={step}
+      value={[value]}
+      onValueChange={(newValue) => onChange(newValue[0])}
     />
   </div>
 )
 
-export default function TopographicMap() {
+const ColorInput = ({ label, value, onChange }) => (
+  <div className="space-y-2">
+    <Label htmlFor={label} className="text-xs">{label}</Label>
+    <div className="flex items-center space-x-2">
+      <Input
+        id={label}
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-8 h-8 p-0 border-none"
+      />
+      <Input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 h-8 text-xs"
+      />
+    </div>
+  </div>
+)
+
+export default function TopographicMapGenerator() {
+  const { theme, setTheme } = useTheme()
   const [mapSize, setMapSize] = useState(10)
-  const [speed, setSpeed] = useState(0.75)
-  const [generalTopography, setGeneralTopography] = useState(0.42)
-  const [maxElevation, setMaxElevation] = useState(1.48)
-  const [warping, setWarping] = useState(2.19)
-  const [lineColorMode, setLineColorMode] = useState(false)
+  const [speed, setSpeed] = useState(0.1)
+  const [generalTopography, setGeneralTopography] = useState(0.2)
+  const [maxElevation, setMaxElevation] = useState(2)
+  const [warping, setWarping] = useState(0.5)
+  const [ridgeFrequency, setRidgeFrequency] = useState(5)
+  const [ridgeHeight, setRidgeHeight] = useState(0.1)
+  const [lineColorMode, setLineColorMode] = useState(true)
+  const [lineColor, setLineColor] = useState("#ffffff")
+  const [lineThickness, setLineThickness] = useState(0.05)
+  const [lineHeight, setLineHeight] = useState(20)
   const [backgroundColor, setBackgroundColor] = useState("#000000")
-  const [elevationColorMode, setElevationColorMode] = useState(true)
-  const [highElevationColor, setHighElevationColor] = useState("#7F7F7F")
+  const [highElevationColor, setHighElevationColor] = useState("#ffffff")
   const [lowElevationColor, setLowElevationColor] = useState("#000000")
-  const [elevationColorStrength, setElevationColorStrength] = useState(1.50)
-  const [elevationColorDiffusion, setElevationColorDiffusion] = useState(2.00)
+  const [elevationColorStrength, setElevationColorStrength] = useState(1.5)
+  const [elevationColorDiffusion, setElevationColorDiffusion] = useState(0.5)
+  const [transformTo2D, setTransformTo2D] = useState(false)
 
   const randomize = () => {
     setGeneralTopography(Math.random())
-    setMaxElevation(Math.random() * 5)
-    setWarping(Math.random() * 3)
+    setMaxElevation(Math.random() * 3 + 1)
+    setWarping(Math.random() * 1.5)
+    setRidgeFrequency(Math.random() * 10 + 1)
+    setRidgeHeight(Math.random() * 0.2)
+    setLineThickness(Math.random() * 0.1)
+    setLineHeight(Math.random() * 30 + 10)
+  }
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
   }
 
   return (
-    <div className="flex h-full bg-background">
-      <div className="flex-1">
-        <Canvas camera={{ position: [0, 2, 5], fov: 75 }}>
+    <div className="flex h-screen bg-background text-foreground">
+      <div className="flex-1 relative">
+        <Canvas camera={{ position: [0, 3, 5], fov: 75 }}>
           <color attach="background" args={[backgroundColor]} />
           <Terrain
             mapSize={mapSize}
@@ -211,107 +296,86 @@ export default function TopographicMap() {
             generalTopography={generalTopography}
             maxElevation={maxElevation}
             warping={warping}
+            ridgeFrequency={ridgeFrequency}
+            ridgeHeight={ridgeHeight}
             highColor={highElevationColor}
             lowColor={lowElevationColor}
             colorStrength={elevationColorStrength}
             colorDiffusion={elevationColorDiffusion}
+            lineColorMode={lineColorMode}
+            lineColor={lineColor}
+            lineThickness={lineThickness}
+            lineHeight={lineHeight}
+            transformTo2D={transformTo2D}
           />
-          <OrbitControls enableZoom={false} enablePan={false} enableRotate={false} />
+          <OrbitControls enableZoom={true} enablePan={true} enableRotate={true} />
         </Canvas>
       </div>
-      <div className="w-64 p-3 bg-card text-card-foreground overflow-y-auto text-xs">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="transformTo2D" className="text-xs">Transform to 2D plane</Label>
-            <Switch
-              id="transformTo2D"
-              checked={false}
-              onCheckedChange={() => {}}
-              className="scale-75"
-            />
-          </div>
-          {[
-            { label: "Size of the map", value: mapSize, setValue: setMapSize, min: 1, max: 20, step: 0.1 },
-            { label: "Speed", value: speed, setValue: setSpeed, min: 0, max: 1, step: 0.01 },
-            { label: "General topography", value: generalTopography, setValue: setGeneralTopography, min: 0, max: 1, step: 0.01 },
-            { label: "Max. elevation", value: maxElevation, setValue: setMaxElevation, min: 0, max: 5, step: 0.01 },
-            { label: "Warping", value: warping, setValue: setWarping, min: 0, max: 3, step: 0.01 },
-            { label: "Elevation color strength", value: elevationColorStrength, setValue: setElevationColorStrength, min: 0, max: 3, step: 0.01 },
-            { label: "Elevation color diffusion", value: elevationColorDiffusion, setValue: setElevationColorDiffusion, min: 0, max: 5, step: 0.01 },
-          ].map(({ label, value, setValue, min, max, step }) => (
-            <div key={label} className="space-y-1">
-              <div className="flex justify-between items-center">
-                <Label htmlFor={label} className="text-xs">{label}</Label>
-                <Input
-                  id={label}
-                  type="number"
-                  value={value.toFixed(2)}
-                  onChange={(e) => setValue(Number(e.target.value))}
-                  className="w-16 h-5 text-xs bg-input text-input-foreground"
-                  min={min}
-                  max={max}
-                  step={step}
-                />
-              </div>
-              <CustomSlider value={value} onChange={setValue} min={min} max={max} step={step} />
-            </div>
-          ))}
-          <Button onClick={randomize} className="w-full h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90">Randomize</Button>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="lineColorMode" className="text-xs">Activate line color mode</Label>
-            <Switch
-              id="lineColorMode"
-              checked={lineColorMode}
-              onCheckedChange={setLineColorMode}
-              className="scale-75"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="elevationColorMode" className="text-xs">Activate elevation color mode</Label>
-            <Switch
-              id="elevationColorMode"
-              checked={elevationColorMode}
-              onCheckedChange={setElevationColorMode}
-              className="scale-75"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="highElevationColor" className="text-xs">High elevation color</Label>
-            <div className="flex items-center space-x-2">
-              <Input
-                id="highElevationColor"
-                type="color"
-                value={highElevationColor}
-                onChange={(e) => setHighElevationColor(e.target.value)}
-                className="w-8 h-5 p-0 bg-transparent border-0"
-              />
-              <Input
-                type="text"
-                value={highElevationColor}
-                onChange={(e) => setHighElevationColor(e.target.value)}
-                className="flex-1 h-5 text-xs bg-input text-input-foreground"
-              />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="lowElevationColor" className="text-xs">Low elevation color</Label>
-            <div className="flex items-center space-x-2">
-              <Input
-                id="lowElevationColor"
-                type="color"
-                value={lowElevationColor}
-                onChange={(e) => setLowElevationColor(e.target.value)}
-                className="w-8 h-5 p-0 bg-transparent border-0"
-              />
-              <Input
-                type="text"
-                value={lowElevationColor}
-                onChange={(e) => setLowElevationColor(e.target.value)}
-                className="flex-1 h-5 text-xs bg-input text-input-foreground"
-              />
-            </div>
-          </div>
+      <div className="w-80 p-4 bg-card text-card-foreground overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">Topographic Map Generator</h2>
+          <Button variant="ghost" size="icon" onClick={toggleTheme}>
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
         </div>
+        <Accordion type="multiple" defaultValue={["miscellaneous", "topography", "color"]} className="w-full">
+          <AccordionItem value="miscellaneous">
+            <AccordionTrigger>Miscellaneous</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="transformTo2D" className="text-sm">Transform to 2D plane</Label>
+                  <Switch
+                    id="transformTo2D"
+                    checked={transformTo2D}
+                    onCheckedChange={setTransformTo2D}
+                  />
+                </div>
+                <CustomSlider label="Size of the map" value={mapSize} onChange={setMapSize} min={1} max={20} step={0.1} />
+                <CustomSlider label="Speed" value={speed} onChange={setSpeed} min={0} max={1} step={0.01} />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="topography">
+            <AccordionTrigger>Topography</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-4">
+                <CustomSlider label="General topography" value={generalTopography} onChange={setGeneralTopography} min={0} max={1} step={0.01} />
+                <CustomSlider label="Max. elevation" value={maxElevation} onChange={setMaxElevation} min={0} max={5} step={0.01} />
+                <CustomSlider label="Warping" value={warping} onChange={setWarping} min={0} max={3} step={0.01} />
+                <CustomSlider label="Ridge frequency" value={ridgeFrequency} onChange={setRidgeFrequency} min={0} max={20} step={0.1} />
+                <CustomSlider label="Ridge height" value={ridgeHeight} onChange={setRidgeHeight} min={0} max={0.5} step={0.01} />
+                <Button onClick={randomize} className="w-full">
+                  <Shuffle className="w-4 h-4 mr-2" />
+                  Randomize
+                </Button>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="color">
+            <AccordionTrigger>Color</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="lineColorMode" className="text-sm">Activate line color mode</Label>
+                  <Switch
+                    id="lineColorMode"
+                    checked={lineColorMode}
+                    onCheckedChange={setLineColorMode}
+                  />
+                </div>
+                <ColorInput label="Line color" value={lineColor} onChange={setLineColor} />
+                <CustomSlider label="Line thickness" value={lineThickness} onChange={setLineThickness} min={0} max={0.2} step={0.001} />
+                <CustomSlider label="Line height" value={lineHeight} onChange={setLineHeight} min={1} max={50} step={0.1} />
+                <ColorInput label="Background color" value={backgroundColor} onChange={setBackgroundColor} />
+                <ColorInput label="High elevation color" value={highElevationColor} onChange={setHighElevationColor} />
+                <ColorInput label="Low elevation color" value={lowElevationColor} onChange={setLowElevationColor} />
+                <CustomSlider label="Elevation color strength" value={elevationColorStrength} onChange={setElevationColorStrength} min={0} max={3} step={0.01} />
+                <CustomSlider label="Elevation color diffusion" value={elevationColorDiffusion} onChange={setElevationColorDiffusion} min={0} max={5} step={0.01} />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
     </div>
   )
