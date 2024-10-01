@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useRef, useState, useEffect } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { Slider } from "@/components/ui/slider"
@@ -10,7 +10,8 @@ import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { ChevronRight, ChevronLeft, Shuffle } from "lucide-react"
+import { ChevronRight, ChevronLeft, Shuffle, Sun, Moon } from "lucide-react"
+import { useTheme } from "next-themes"
 
 const vertexShader = `
   uniform float uTime;
@@ -218,46 +219,100 @@ function Terrain({
   )
 }
 
-const CustomInput = ({ value, onChange, min, max, step, label }) => (
-  <div className="space-y-2">
-    <div className="flex justify-between">
-      <Label htmlFor={label} className="text-xs">{label}</Label>
-    </div>
-    <Input
-      id={label}
-      type="number"
-      value={value}
-      onChange={(e) => onChange(parseFloat(e.target.value))}
-      min={min}
-      max={max}
-      step={step}
-      className="h-8 text-xs"
-    />
-  </div>
-)
+const EditableValue = ({ value, onChange, min, max, step, label }) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(value.toString())
 
-const ColorInput = ({ label, value, onChange }) => (
-  <div className="space-y-2">
-    <Label htmlFor={label} className="text-xs">{label}</Label>
-    <div className="flex items-center space-x-2">
-      <Input
+  const handleBlur = () => {
+    setIsEditing(false)
+    const newValue = parseFloat(editValue)
+    if (!isNaN(newValue) && newValue >= min && newValue <= max) {
+      onChange(newValue)
+    } else {
+      setEditValue(value.toString())
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between">
+        <Label htmlFor={label} className="text-xs">{label}</Label>
+        {isEditing ? (
+          <Input
+            type="number"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleBlur}
+            onKeyPress={(e) => e.key === 'Enter' && handleBlur()}
+            className="w-16 h-6 text-xs"
+            autoFocus
+          />
+        ) : (
+          <span 
+            className="text-xs text-muted-foreground cursor-pointer" 
+            onClick={() => setIsEditing(true)}
+          >
+            {value.toFixed(2)}
+          </span>
+        )}
+      </div>
+      <Slider
         id={label}
-        type="color"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-8 h-8 p-0 border-none"
-      />
-      <Input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex-1 h-8 text-xs"
+        min={min}
+        max={max}
+        step={step}
+        value={[value]}
+        onValueChange={(newValue) => onChange(newValue[0])}
       />
     </div>
-  </div>
-)
+  )
+}
+
+const EditableColorInput = ({ label, value, onChange }) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(value)
+
+  const handleBlur = () => {
+    setIsEditing(false)
+    onChange(editValue)
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={label} className="text-xs">{label}</Label>
+      <div className="flex items-center space-x-2">
+        <Input
+          id={label}
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-8 h-8 p-0 border-none"
+        />
+        {isEditing ? (
+          <Input
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleBlur}
+            onKeyPress={(e) => e.key === 'Enter' && handleBlur()}
+            className="flex-1 h-8 text-xs"
+            autoFocus
+          />
+        ) : (
+          <span 
+            className="flex-1 h-8 text-xs cursor-pointer" 
+            onClick={() => setIsEditing(true)}
+          >
+            {value}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function TopographicMapGenerator() {
+  const { theme, setTheme } = useTheme()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mapSize, setMapSize] = useState(10)
   const [speed, setSpeed] = useState(0.1)
@@ -287,6 +342,24 @@ export default function TopographicMapGenerator() {
     setLineThickness(Math.random() * 0.1)
     setLineHeight(Math.random() * 30 + 10)
   }
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }
+
+  useEffect(() => {
+    if (theme === "dark") {
+      setBackgroundColor("#000000")
+      setHighElevationColor("#ffffff")
+      setLowElevationColor("#000000")
+      setLineColor("#ffffff")
+    } else {
+      setBackgroundColor("#ffffff")
+      setHighElevationColor("#000000")
+      setLowElevationColor("#ffffff")
+      setLineColor("#000000")
+    }
+  }, [theme])
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -326,20 +399,22 @@ export default function TopographicMapGenerator() {
         <div className="w-80 p-4 bg-background/80 backdrop-blur-md text-foreground overflow-y-auto">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold">Topographic Map Generator</h2>
+            <Button variant="ghost" size="icon" onClick={toggleTheme}>
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
           </div>
           <Accordion type="multiple" defaultValue={["topography", "color"]} className="w-full">
             <AccordionItem value="topography">
               <AccordionTrigger>Topography</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-4">
-                  <CustomInput label="Map Size" value={mapSize} onChange={setMapSize} min={1} max={20} step={0.1} />
-                  <CustomInput label="Speed" value={speed} onChange={setSpeed} min={0} max={1} step={0.01} />
-                  <CustomInput label="Max. elevation" value={maxElevation} onChange={setMaxElevation} min={0} max={5} step={0.01} />
-                  <CustomInput label="Warping" value={warping} onChange={setWarping} min={0} max={3} step={0.01} />
-                  <CustomInput label="Ridge frequency" value={ridgeFrequency} onChange={setRidgeFrequency} min={0} max={20} step={0.1} />
-                  <CustomInput label="Ridge height" value={ridgeHeight} onChange={setRidgeHeight} min={0} max={0.5} step={0.01} />
-                  <CustomInput label="Terrace step" value={terraceStep} onChange={setTerraceStep} min={0} max={0.5} step={0.01} />
-                  <CustomInput label="Terrace smoothing" value={terraceSmoothing} onChange={setTerraceSmoothing} min={0} max={1} step={0.01} />
+                  <EditableValue label="Max. elevation" value={maxElevation} onChange={setMaxElevation} min={0} max={5} step={0.01} />
+                  <EditableValue label="Warping" value={warping} onChange={setWarping} min={0} max={3} step={0.01} />
+                  <EditableValue label="Ridge frequency" value={ridgeFrequency} onChange={setRidgeFrequency} min={0} max={20} step={0.1} />
+                  <EditableValue label="Ridge height" value={ridgeHeight} onChange={setRidgeHeight} min={0} max={0.5} step={0.01} />
+                  <EditableValue label="Terrace step" value={terraceStep} onChange={setTerraceStep} min={0} max={0.5} step={0.01} />
+                  <EditableValue label="Terrace smoothing" value={terraceSmoothing} onChange={setTerraceSmoothing} min={0} max={1} step={0.01} />
+                  <EditableValue label="Speed" value={speed} onChange={setSpeed} min={0} max={1} step={0.01} />
                   <Button onClick={randomize} className="w-full">
                     <Shuffle className="w-4 h-4 mr-2" />
                     Randomize
@@ -359,14 +434,14 @@ export default function TopographicMapGenerator() {
                       onCheckedChange={setLineColorMode}
                     />
                   </div>
-                  <ColorInput label="Line color" value={lineColor} onChange={setLineColor} />
-                  <CustomInput label="Line thickness" value={lineThickness} onChange={setLineThickness} min={0} max={0.2} step={0.001} />
-                  <CustomInput label="Line height" value={lineHeight} onChange={setLineHeight} min={1} max={50} step={0.1} />
-                  <ColorInput label="Background color" value={backgroundColor} onChange={setBackgroundColor} />
-                  <ColorInput label="High elevation color" value={highElevationColor} onChange={setHighElevationColor} />
-                  <ColorInput label="Low elevation color" value={lowElevationColor} onChange={setLowElevationColor} />
-                  <CustomInput label="Elevation color strength" value={elevationColorStrength} onChange={setElevationColorStrength} min={0} max={3} step={0.01} />
-                  <CustomInput label="Elevation color diffusion" value={elevationColorDiffusion} onChange={setElevationColorDiffusion} min={0} max={5} step={0.01} />
+                  <EditableColorInput label="Line color" value={lineColor} onChange={setLineColor} />
+                  <EditableValue label="Line thickness" value={lineThickness} onChange={setLineThickness} min={0} max={0.2} step={0.001} />
+                  <EditableValue label="Line height" value={lineHeight} onChange={setLineHeight} min={1} max={50} step={0.1} />
+                  <EditableColorInput label="Background color" value={backgroundColor} onChange={setBackgroundColor} />
+                  <EditableColorInput label="High elevation color" value={highElevationColor} onChange={setHighElevationColor} />
+                  <EditableColorInput label="Low elevation color" value={lowElevationColor} onChange={setLowElevationColor} />
+                  <EditableValue label="Elevation color strength" value={elevationColorStrength} onChange={setElevationColorStrength} min={0} max={3} step={0.01} />
+                  <EditableValue label="Elevation color diffusion" value={elevationColorDiffusion} onChange={setElevationColorDiffusion} min={0} max={5} step={0.01} />
                 </div>
               </AccordionContent>
             </AccordionItem>
